@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/minio/madmin-go/v3"
 )
@@ -31,8 +31,19 @@ type Disk struct {
 
 var infra = make(map[string]*Set)
 
+var (
+	endpoint    string
+	miniokey    string
+	miniosecret string
+)
+
 func main() {
-	mclient, err := madmin.New("127.0.0.1:9000", "minioadmin", "minioadmin", false)
+	flag.StringVar(&endpoint, "endpoint", "127.0.0.1:9000", "server endpoint")
+	flag.StringVar(&miniokey, "key", "minioadmin", "minio user/key")
+	flag.StringVar(&miniosecret, "secret", "minioadmin", "minio password/secret")
+	flag.Parse()
+
+	mclient, err := madmin.New(endpoint, miniokey, miniosecret, false)
 	if err != nil {
 		panic(err)
 	}
@@ -43,10 +54,18 @@ func main() {
 		panic(err)
 	}
 
-	// fmt.Println(info.Backend.TotalSets)
-	// fmt.Println(info.Backend.DrivesPerSet)
-	// fmt.Println(info.Backend.StandardSCParity)
-	// fmt.Println(info.Backend.RRSCParity)
+	fullb, err := json.Marshal(info)
+	if err != nil {
+		panic(err)
+	}
+
+	ff, err := os.Create("infra.json")
+	if err != nil {
+		panic(err)
+	}
+	ff.Write(fullb)
+	ff.Close()
+
 	for _, v := range info.Servers {
 		for _, vv := range v.Disks {
 			index := fmt.Sprintf("%d-%d", vv.PoolIndex, vv.SetIndex)
@@ -97,7 +116,7 @@ func main() {
 		}
 	}
 
-	f, err := os.Create(fmt.Sprintf("%s-infra.json", time.Now().Format("2006-01-01-15-04-05-PM")))
+	f, err := os.Create("sets.json")
 	bb, err := json.Marshal(infra)
 	if err != nil {
 		panic(err)
