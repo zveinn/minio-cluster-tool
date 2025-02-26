@@ -683,7 +683,12 @@ func rebootServer(host string) {
 		Timeout:         10 * time.Second,
 	}
 
-	fmt.Println("Rebooting:", host)
+	if minioOnly {
+		fmt.Printf("Rebooting(%s) dry(%t) minio(true) server(false)", host, dryRun)
+	} else {
+		fmt.Printf("Rebooting(%s) dry(%t) minio(true) server(true)", host, dryRun)
+	}
+
 	con, err := ssh.Dial("tcp", host+":"+port, config)
 	if err != nil {
 		fmt.Println(err)
