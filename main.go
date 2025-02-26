@@ -66,6 +66,9 @@ var (
 	badSetsOnly  bool
 	badDisksOnly bool
 
+	dryRun    bool
+	minioOnly bool
+
 	folder   string
 	hostfile string
 	port     string
@@ -124,6 +127,8 @@ func parseArgs() (command string) {
 
 	case "reboot":
 		flag.StringVar(&hostfile, "hostfile", "", "The list of hosts to be rebooted")
+		flag.BoolVar(&dryRun, "dryRun", true, "Only perform a dry run")
+		flag.BoolVar(&minioOnly, "minioOnly", true, "Only restart minio, not the server itself")
 		if hasHelp {
 			flag.Parse()
 			flag.Usage()
@@ -677,6 +682,7 @@ func rebootServer(host string) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
+
 	fmt.Println("Rebooting:", host)
 	con, err := ssh.Dial("tcp", host+":"+port, config)
 	if err != nil {
@@ -690,28 +696,33 @@ func rebootServer(host string) {
 	}
 	defer session.Close()
 
-	output, err := session.CombinedOutput("echo rebootthis")
-	if err != nil {
-		fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
-		fmt.Printf("Output: %s\n", output)
-		return
+	if dryRun {
+		output, err := session.CombinedOutput("date")
+		if err != nil {
+			fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
+			fmt.Printf("Output: %s\n", output)
+			return
+		}
+	} else {
+		output, err := session.CombinedOutput("sudo systemctl restart minio")
+		if err != nil {
+			fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
+			fmt.Printf("Output: %s\n", output)
+			return
+		}
+
+		if !minioOnly {
+			output, err = session.CombinedOutput("sudo rebood")
+			if err != nil {
+				fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
+				fmt.Printf("Output: %s\n", output)
+				return
+			}
+		}
+
 	}
 
-	// output, err := session.CombinedOutput("sudo reboot")
-	// if err != nil {
-	// 	fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
-	// 	fmt.Printf("Output: %s\n", output)
-	// 	return
-	// }
-	//
-	// output, err = session.CombinedOutput("sudo systemctl restart minio")
-	// if err != nil {
-	// 	fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
-	// 	fmt.Printf("Output: %s\n", output)
-	// 	return
-	// }
-
-	fmt.Println("Rebooted:", host, "output:", string(output))
+	fmt.Println("Rebooted:", host)
 }
 
 func healthPing(endpoint string) (healthy bool, err error) {
