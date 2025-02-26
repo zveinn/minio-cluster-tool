@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
@@ -225,7 +226,7 @@ func disks() {
 						}
 					} else {
 						toPrint = append(toPrint,
-							fmt.Sprintf("%-20s %-4d %s", vvvv.Path, vvvv.Set, vvvv.State),
+							fmt.Sprintf("%-30s %-4d %s", vvvv.Path, vvvv.Set, vvvv.State),
 						)
 					}
 				}
@@ -236,7 +237,7 @@ func disks() {
 				fmt.Printf("%-10s %s\n", "Pool", i)
 				fmt.Printf("%-10s %s\n", "Server", ii)
 				fmt.Println("")
-				fmt.Printf("%-20s %-4s %s\n", "PATH", "SET", "STATE")
+				fmt.Printf("%-30s %-4s %s\n", "PATH", "SET", "STATE")
 
 				for _, v := range toPrint {
 					fmt.Println(v)
@@ -317,17 +318,22 @@ func getInfra() (pools map[string]*Pool, totalServers int, err error) {
 	}
 
 	var info madmin.StorageInfo
-	// info, err = mclient.StorageInfo(context.Background())
-	// if err != nil {
-	// 	return
-	// }
-	bb, err := os.ReadFile("storage_info.json")
-	if err != nil {
-		panic(err)
-	}
-	err = json.Unmarshal(bb, &info)
-	if err != nil {
-		panic(err)
+	if os.Getenv("INFRA_FILE_REPLACEMENT") != "" {
+		fmt.Println("Loading storage info file", os.Getenv("INFRA_FILE_REPLACEMENT"))
+		bb, err := os.ReadFile(os.Getenv("INFRA_FILE_REPLACEMENT"))
+		if err != nil {
+			panic(err)
+		}
+		err = json.Unmarshal(bb, &info)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		info, err = mclient.StorageInfo(context.Background())
+		if err != nil {
+			return
+		}
+
 	}
 
 	setInfo := make(map[string]map[string]*Set)
