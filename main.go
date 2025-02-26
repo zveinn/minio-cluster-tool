@@ -701,6 +701,7 @@ func rebootServer(host string) {
 	}
 	defer session.Close()
 
+	var output []byte
 	if dryRun {
 		output, err := session.CombinedOutput("date")
 		if err != nil {
@@ -709,22 +710,29 @@ func rebootServer(host string) {
 			return
 		}
 	} else {
-		output, err := session.CombinedOutput("sudo systemctl restart minio")
-		if err != nil {
-			fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
-			fmt.Printf("Output: %s\n", output)
-			return
-		}
+		if minioOnly {
+			output, err = session.CombinedOutput("sudo systemctl restart minio")
+			if err != nil {
+				fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
+				fmt.Printf("Output: %s\n", output)
+				return
+			}
 
-		if !minioOnly {
-			output, err = session.CombinedOutput("sudo rebood")
+		} else {
+			output, err = session.CombinedOutput("sudo systemctl stop minio")
+			if err != nil {
+				fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
+				fmt.Printf("Output: %s\n", output)
+				return
+			}
+
+			output, err = session.CombinedOutput("sudo reboot")
 			if err != nil {
 				fmt.Printf("Command failed @ %s .. err: %v\n", host, err)
 				fmt.Printf("Output: %s\n", output)
 				return
 			}
 		}
-
 	}
 
 	fmt.Println("Rebooted:", host)
