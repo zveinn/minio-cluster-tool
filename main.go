@@ -95,8 +95,8 @@ func main() {
 		healthCheck()
 	case "sets":
 		sets()
-	case "servers":
-		servers()
+	case "disks":
+		disks()
 	case "info":
 		info()
 	default:
@@ -143,8 +143,7 @@ func parseArgs() (command string) {
 			flag.Usage()
 			os.Exit(1)
 		}
-	case "servers":
-		flag.BoolVar(&jsonOutput, "json", false, "Print output in json")
+	case "disks":
 		flag.BoolVar(&badDisksOnly, "badDisksOnly", false, "Show only bad disks")
 		if hasHelp {
 			flag.Parse()
@@ -178,10 +177,13 @@ func printCommands() {
 	fmt.Println("")
 	fmt.Println(" Available commands")
 	fmt.Println(" -----------------------------")
-	fmt.Println(" sets       Shows which servers are in which sets")
-	fmt.Println(" hostfile   Generates hostfiles in `-folder`")
+	fmt.Println(" info       Create a json output of core storage system information")
+	fmt.Println(" sets       Shows which servers/disks are in which sets (can show broken sets too)")
+	fmt.Println(" disks      Shows a list of disks per server (can show broken disks too)")
+	fmt.Println()
+	fmt.Println(" hostfile   Generates hostfiles in `-folder`. Hosts that can not be rebooted will be places in a file called 'failure'")
 	fmt.Println(" reboot     Reboots servers defined in `-hostfile`")
-	fmt.Println(" monitor    Monitors the uptime of hosts defined in `-hostfile`")
+	fmt.Println(" health     Monitors the health endpoint of hosts defined in `-hostfile`")
 	fmt.Println(" -----------------------------")
 	fmt.Println("")
 }
@@ -204,7 +206,7 @@ func info() {
 	jsonOut(pools)
 }
 
-func servers() {
+func disks() {
 	pools, _, err := getInfra()
 	if err != nil {
 		panic(err)
@@ -681,6 +683,7 @@ func rebootServer(host string) {
 		return
 	}
 	defer session.Close()
+
 	output, err := session.CombinedOutput("echo rebootthis")
 	if err != nil {
 		fmt.Printf("Command failed @ %s .. err: %v\n", host, err)

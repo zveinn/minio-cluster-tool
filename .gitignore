@@ -1,1 +1,3 @@
 *.json
+minio-cluster-tool
+cluster-test/
