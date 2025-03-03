@@ -99,6 +99,8 @@ func main() {
 		healthCheck()
 	case "sets":
 		sets()
+	case "heal":
+		heal()
 	case "disks":
 		disks()
 	case "info":
@@ -162,6 +164,13 @@ func parseArgs() (command string) {
 			flag.Usage()
 			os.Exit(1)
 		}
+	case "heal":
+		flag.BoolVar(&dryRun, "dryRun", true, "Only perform a dry run")
+		if hasHelp {
+			flag.Parse()
+			flag.Usage()
+			os.Exit(1)
+		}
 	default:
 	}
 
@@ -190,6 +199,7 @@ func printCommands() {
 	fmt.Println(" hostfile   Generates hostfiles in `-folder`. Hosts that can not be rebooted will be places in a file called 'failure'")
 	fmt.Println(" reboot     Reboots servers defined in `-hostfile`")
 	fmt.Println(" health     Monitors the health endpoint of hosts defined in `-hostfile`")
+	fmt.Println(" heal       Triggers erasure set healing on all sets on `-endpoint`")
 	fmt.Println(" -----------------------------")
 	fmt.Println("")
 }
@@ -210,6 +220,111 @@ func info() {
 		panic(err)
 	}
 	jsonOut(pools)
+}
+
+func heal() {
+	pools, _, err := getInfra()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(endpoint)
+	for i, v := range pools {
+		poolIndex, err := strconv.Atoi(i)
+		if err != nil {
+			panic(err)
+		}
+
+		for _, vv := range v.Servers {
+			// fmt.Println(endpoint, ">", sid, vv.Endpoint, vv)
+			if endpoint == vv.Endpoint || len(v.Servers) == 1 {
+				// fmt.Println("FOUND IT!", vv.Endpoint)
+
+				for si := range vv.Sets {
+					setIndex := si
+
+					// fmt.Println("healing:", poolIndex, setIndex)
+					fmt.Printf("Healing pool(%d) set(%d)\n", poolIndex, setIndex)
+					success, status, err := mclient.Heal(
+						context.Background(),
+						"",
+						"",
+						madmin.HealOpts{
+							DryRun:       false,
+							Remove:       false,
+							Recreate:     false,
+							UpdateParity: false,
+							NoLock:       false,
+							Recursive:    true,
+							ScanMode:     1,
+							Pool:         &poolIndex,
+							Set:          &setIndex,
+						},
+						"",
+						true,
+						false,
+					)
+					if err != nil {
+						panic(err)
+					}
+
+					for {
+						scannedObjects := 0
+						invalidStates := 0
+
+						time.Sleep(5 * time.Second)
+						success, status, err = mclient.Heal(
+							context.Background(),
+							"",
+							"",
+							madmin.HealOpts{
+								DryRun:       false,
+								Remove:       false,
+								Recreate:     false,
+								UpdateParity: false,
+								NoLock:       false,
+								Recursive:    true,
+								ScanMode:     1,
+								Pool:         &poolIndex,
+								Set:          &setIndex,
+							},
+							success.ClientToken,
+							false,
+							false,
+						)
+						if err != nil {
+							panic(err)
+						} else {
+							done := true
+							if len(status.Items) == 0 {
+								fmt.Println("No object report, checking again in 5 seconds...")
+								continue
+							}
+
+							for _, v := range status.Items {
+								scannedObjects++
+								mb, ma := v.GetMissingCounts()
+								cb, ca := v.GetCorruptedCounts()
+								ofb, ofa := v.GetOfflineCounts()
+								broken := mb + ma + cb + ca + ofb + ofa
+								invalidStates = invalidStates + ma + ca + ofa
+								if broken > 0 {
+									done = false
+								}
+							}
+
+							fmt.Printf("Scanned(%d) Invalid(%d)\n", scannedObjects, invalidStates)
+							if done {
+								fmt.Printf("Finished with pool(%d) set(%d)\n", poolIndex, setIndex)
+								break
+							}
+						}
+					}
+
+				}
+			}
+		}
+	}
 }
 
 func disks() {
@@ -345,16 +460,18 @@ func getInfra() (pools map[string]*Pool, totalServers int, err error) {
 
 	pools = make(map[string]*Pool, 0)
 	for _, d := range info.Disks {
-		if setInfo[strconv.Itoa(d.PoolIndex)] == nil {
-			setInfo[strconv.Itoa(d.PoolIndex)] = make(map[string]*Set, 0)
+		PI := strconv.Itoa(d.PoolIndex + 1)
+		SI := d.SetIndex + 1
+		if setInfo[PI] == nil {
+			setInfo[PI] = make(map[string]*Set, 0)
 		}
 
-		pool, ok := pools[strconv.Itoa(d.PoolIndex)]
+		pool, ok := pools[PI]
 		if !ok {
-			pools[strconv.Itoa(d.PoolIndex)] = &Pool{
+			pools[PI] = &Pool{
 				Servers: make(map[string]*Server, 0),
 			}
-			pool = pools[strconv.Itoa(d.PoolIndex)]
+			pool = pools[PI]
 		}
 
 		x, errx := url.Parse(d.Endpoint)
@@ -373,30 +490,30 @@ func getInfra() (pools map[string]*Pool, totalServers int, err error) {
 			totalServers++
 		}
 
-		set, ok := server.Sets[d.SetIndex]
+		set, ok := server.Sets[SI]
 		if !ok {
-			server.Sets[d.SetIndex] = &Set{
+			server.Sets[SI] = &Set{
 				Disks:      make(map[string]*Disk, 0),
 				SCParity:   info.Backend.StandardSCParity,
 				RRSCParity: info.Backend.RRSCParity,
-				ID:         d.SetIndex,
-				Pool:       d.PoolIndex,
+				ID:         SI,
+				Pool:       d.PoolIndex + 1,
 				CanReboot:  false,
 			}
-			set = server.Sets[d.SetIndex]
+			set = server.Sets[SI]
 		}
 
-		seti, ok := setInfo[strconv.Itoa(d.PoolIndex)][strconv.Itoa(d.SetIndex)]
+		seti, ok := setInfo[PI][strconv.Itoa(SI)]
 		if !ok {
-			setInfo[strconv.Itoa(d.PoolIndex)][strconv.Itoa(d.SetIndex)] = &Set{
+			setInfo[PI][strconv.Itoa(SI)] = &Set{
 				SCParity:   info.Backend.StandardSCParity,
 				RRSCParity: info.Backend.RRSCParity,
-				ID:         d.SetIndex,
-				Pool:       d.PoolIndex,
+				ID:         SI,
+				Pool:       d.PoolIndex + 1,
 				BadDisks:   0,
 				CanReboot:  true,
 			}
-			seti = setInfo[strconv.Itoa(d.PoolIndex)][strconv.Itoa(d.SetIndex)]
+			seti = setInfo[PI][strconv.Itoa(SI)]
 		}
 
 		if d.State != "ok" {
@@ -410,9 +527,9 @@ func getInfra() (pools map[string]*Pool, totalServers int, err error) {
 		set.Disks[d.Endpoint] = &Disk{
 			UUID:   d.UUID,
 			Index:  d.DiskIndex,
-			Pool:   d.PoolIndex,
+			Pool:   d.PoolIndex + 1,
 			Server: d.Endpoint,
-			Set:    d.SetIndex,
+			Set:    SI,
 			Path:   d.DrivePath,
 			State:  d.State,
 		}
