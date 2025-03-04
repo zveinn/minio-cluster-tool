@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.6
 
 require (
-	github.com/minio/madmin-go/v3 v3.0.94
+	github.com/minio/madmin-go/v3 v3.0.95
 	github.com/minio/minio-go/v7 v7.0.87
 	golang.org/x/crypto v0.35.0
 )

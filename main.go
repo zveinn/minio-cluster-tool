@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/minio/madmin-go/v3"
@@ -222,13 +223,105 @@ func info() {
 	jsonOut(pools)
 }
 
+func healSet(poolIndex int, setIndex int) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			log.Println(r, string(debug.Stack()))
+		}
+		healMapLock.Lock()
+		healMap[fmt.Sprintf("%d/%d", poolIndex, poolIndex)] = 0
+		healMapLock.Unlock()
+	}()
+
+	success, status, err := mclient.Heal(
+		context.Background(),
+		"",
+		"",
+		madmin.HealOpts{
+			DryRun:       false,
+			Remove:       false,
+			Recreate:     false,
+			UpdateParity: false,
+			NoLock:       false,
+			Recursive:    true,
+			ScanMode:     1,
+			Pool:         &poolIndex,
+			Set:          &setIndex,
+		},
+		"",
+		true,
+		false,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for {
+		scannedObjects := 0
+		invalidStates := 0
+
+		time.Sleep(2 * time.Second)
+		success, status, err = mclient.Heal(
+			context.Background(),
+			"",
+			"",
+			madmin.HealOpts{
+				DryRun:       false,
+				Remove:       false,
+				Recreate:     false,
+				UpdateParity: false,
+				NoLock:       false,
+				Recursive:    true,
+				ScanMode:     1,
+				Pool:         &poolIndex,
+				Set:          &setIndex,
+			},
+			success.ClientToken,
+			false,
+			false,
+		)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		done := true
+
+		for _, v := range status.Items {
+			scannedObjects++
+			mb, ma := v.GetMissingCounts()
+			cb, ca := v.GetCorruptedCounts()
+			ofb, ofa := v.GetOfflineCounts()
+			broken := mb + ma + cb + ca + ofb + ofa
+			invalidStates = invalidStates + ma + ca + ofa
+			if broken > 0 {
+				done = false
+			}
+		}
+
+		healMapLock.Lock()
+		healMap[fmt.Sprintf("%d/%d", poolIndex, poolIndex)] = invalidStates
+		healMapLock.Unlock()
+		if done {
+			break
+		}
+
+	}
+}
+
+var (
+	healMap     = make(map[string]int)
+	healMapLock = new(sync.Mutex)
+)
+
 func heal() {
 	pools, _, err := getInfra()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(endpoint)
 	for i, v := range pools {
 		poolIndex, err := strconv.Atoi(i)
 		if err != nil {
@@ -236,94 +329,31 @@ func heal() {
 		}
 
 		for _, vv := range v.Servers {
-			// fmt.Println(endpoint, ">", sid, vv.Endpoint, vv)
 			if endpoint == vv.Endpoint || len(v.Servers) == 1 {
-				// fmt.Println("FOUND IT!", vv.Endpoint)
-
 				for si := range vv.Sets {
-					setIndex := si
-
-					// fmt.Println("healing:", poolIndex, setIndex)
-					fmt.Printf("Healing pool(%d) set(%d)\n", poolIndex, setIndex)
-					success, status, err := mclient.Heal(
-						context.Background(),
-						"",
-						"",
-						madmin.HealOpts{
-							DryRun:       false,
-							Remove:       false,
-							Recreate:     false,
-							UpdateParity: false,
-							NoLock:       false,
-							Recursive:    true,
-							ScanMode:     1,
-							Pool:         &poolIndex,
-							Set:          &setIndex,
-						},
-						"",
-						true,
-						false,
-					)
-					if err != nil {
-						panic(err)
-					}
-
-					for {
-						scannedObjects := 0
-						invalidStates := 0
-
-						time.Sleep(5 * time.Second)
-						success, status, err = mclient.Heal(
-							context.Background(),
-							"",
-							"",
-							madmin.HealOpts{
-								DryRun:       false,
-								Remove:       false,
-								Recreate:     false,
-								UpdateParity: false,
-								NoLock:       false,
-								Recursive:    true,
-								ScanMode:     1,
-								Pool:         &poolIndex,
-								Set:          &setIndex,
-							},
-							success.ClientToken,
-							false,
-							false,
-						)
-						if err != nil {
-							panic(err)
-						} else {
-							done := true
-							if len(status.Items) == 0 {
-								fmt.Println("No object report, checking again in 5 seconds...")
-								continue
-							}
-
-							for _, v := range status.Items {
-								scannedObjects++
-								mb, ma := v.GetMissingCounts()
-								cb, ca := v.GetCorruptedCounts()
-								ofb, ofa := v.GetOfflineCounts()
-								broken := mb + ma + cb + ca + ofb + ofa
-								invalidStates = invalidStates + ma + ca + ofa
-								if broken > 0 {
-									done = false
-								}
-							}
-
-							fmt.Printf("Scanned(%d) Invalid(%d)\n", scannedObjects, invalidStates)
-							if done {
-								fmt.Printf("Finished with pool(%d) set(%d)\n", poolIndex, setIndex)
-								break
-							}
-						}
-					}
-
+					healMapLock.Lock()
+					healMap[fmt.Sprintf("%d/%d", poolIndex-1, si-1)] = 1
+					healMapLock.Unlock()
+					go healSet(poolIndex-1, si-1)
 				}
 			}
 		}
+	}
+
+	broken := 0
+	for {
+		time.Sleep(2 * time.Second)
+		healMapLock.Lock()
+		for i, v := range healMap {
+			broken += v
+			fmt.Println("Set:", i, "Invalid:", v)
+		}
+		healMapLock.Unlock()
+		if broken == 0 {
+			fmt.Println("done!")
+			break
+		}
+		broken = 0
 	}
 }
 

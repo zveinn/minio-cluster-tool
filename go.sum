@@ -23,8 +23,8 @@ github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMD
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/matttproud/golang_protobuf_extensions v1.0.4 h1:mmDVorXM7PCGKw94cs5zkfA9PSy5pEvNWRP0ET0TIVo=
 github.com/matttproud/golang_protobuf_extensions v1.0.4/go.mod h1:BSXmuO+STAnVfrANrmjBb36TMTDstsz7MSK+HVaYKv4=
-github.com/minio/madmin-go/v3 v3.0.94 h1:n2S8zgm0eRJ09YC7qrDTFDQDQOEUzCTiKEPywCitO/s=
-github.com/minio/madmin-go/v3 v3.0.94/go.mod h1:pMLdj9OtN0CANNs5tdm6opvOlDFfj0WhbztboZAjRWE=
+github.com/minio/madmin-go/v3 v3.0.95 h1:KRy4NIpTLKrHcuTQbKrwKs3SvGoe+ZAHT2Pbl1zJxDc=
+github.com/minio/madmin-go/v3 v3.0.95/go.mod h1:pMLdj9OtN0CANNs5tdm6opvOlDFfj0WhbztboZAjRWE=
 github.com/minio/md5-simd v1.1.2 h1:Gdi1DZK69+ZVMoNHRXJyNcxrMA4dSxoYHZSQbirFg34=
 github.com/minio/md5-simd v1.1.2/go.mod h1:MzdKDxYpY2BT9XQFocsiZf/NKVtR7nkE4RoEpN+20RM=
 github.com/minio/minio-go/v7 v7.0.87 h1:nkr9x0u53PespfxfUqxP3UYWiE2a41gaofgNnC4Y8WQ=
